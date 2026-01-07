@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Crawler Pro</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="dashboard-container">
+        <header>
+            <h1>Web Crawler Pro</h1>
+            <p class="subtitle">Extract data from any website instantly.</p>
+        </header>
+
+        <div class="input-card">
+            <div class="input-group">
+                <input type="text" id="urlInput" placeholder="Enter website URL (e.g. https://openai.com)..."
+                    autocomplete="off">
+                <button class="btn-primary" onclick="startCrawl()" id="crawlBtn">
+                    <span id="btnText">Start Crawl</span>
+                    <div class="spinner" id="btnSpinner" style="display: none;"></div>
+                </button>
+            </div>
+
+            <div id="statusArea" class="status"></div>
+        </div>
+
+        <div class="results" id="resultsSection">
+            <!-- Info Card -->
+            <div class="info-card">
+                <div class="site-details">
+                    <h2 id="pageTitle">Loading title...</h2>
+                    <a href="#" id="crawledUrl" target="_blank">https://example.com</a>
+                    <div style="margin-top: 0.5rem;">
+                        <span class="link-count" id="linkCount">0 Links Found</span>
+                    </div>
+                </div>
+                <button class="btn-download" onclick="downloadCSV()">
+                    Download CSV
+                </button>
+            </div>
+
+            <!-- Table -->
+            <div class="table-container">
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Link Text</th>
+                                <th>Target URL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="linksBody">
+                            <!-- Rows injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentData = null;
+
+        async function startCrawl() {
+            const urlInput = document.getElementById('urlInput');
+            const searchVal = urlInput.value.trim();
+            const btn = document.getElementById('crawlBtn');
+            const btnText = document.getElementById('btnText');
+            const spinner = document.getElementById('btnSpinner');
+            const statusArea = document.getElementById('statusArea');
+            const resultsSection = document.getElementById('resultsSection');
+
+            // Reset
+            statusArea.style.display = 'none';
+            statusArea.className = 'status';
+            resultsSection.style.display = 'none';
+
+            if (!searchVal) {
+                showStatus('Please enter a valid website URL.', 'error');
+                return;
+            }
+
+            // Loading State
+            btn.disabled = true;
+            btnText.textContent = 'Crawling website...';
+            spinner.style.display = 'block';
+
+            try {
+                const response = await fetch('/crawl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: searchVal })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to crawl website');
+                }
+
+                const data = await response.json();
+                currentData = data;
+                displayResults(data);
+
+            } catch (error) {
+                showStatus(error.message, 'error');
+            } finally {
+                // Reset Button
+                btn.disabled = false;
+                btnText.textContent = 'Start Crawl';
+                spinner.style.display = 'none';
+            }
+        }
+
+        function displayResults(data) {
+            document.getElementById('pageTitle').textContent = data.title;
+            const urlLink = document.getElementById('crawledUrl');
+            urlLink.textContent = data.url;
+            urlLink.href = data.url;
+            document.getElementById('linkCount').textContent = `${data.total_count} Links Found`;
+
+            const tbody = document.getElementById('linksBody');
+            tbody.innerHTML = '';
+
+            data.links.forEach(link => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="link-col-text" title="${link.text}">${link.text || '<em style="opacity:0.5">No text</em>'}</td>
+                    <td class="link-col-url"><a href="${link.url}" target="_blank">${link.url}</a></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('resultsSection').style.display = 'block';
+        }
+
+        function showStatus(msg, type) {
+            const el = document.getElementById('statusArea');
+            el.textContent = msg;
+            el.className = `status ${type}`;
+            el.style.display = 'block';
+        }
+
+        async function downloadCSV() {
+            if (!currentData) return;
+            try {
+                const response = await fetch('/download_csv', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(currentData)
+                });
+
+                if (!response.ok) throw new Error('Download failed');
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'web_crawler_results.csv';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => window.URL.revokeObjectURL(url), 100);
+                a.remove();
+            } catch (error) {
+                alert('Export failed');
+            }
+        }
+
+        // Enter key to submit
+        document.getElementById('urlInput').addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') startCrawl();
+        });
+    </script>
+</body>
+
+</html>
